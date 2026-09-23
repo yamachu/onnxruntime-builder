@@ -1109,7 +1109,7 @@ jobs:
           if cargo +1.96.0 build \
             --quiet \
             --package voicevox_core_c_api \
-            --features link-onnxruntime \
+            --features link-onnxruntime,voicevox_core/wasm-open-jtalk-link-smoke \
             --target wasm32-unknown-emscripten \
             --profile c-api \
             > "$RUNNER_TEMP/voicevox_core_wasm_link.log" 2>&1; then
@@ -1144,6 +1144,10 @@ jobs:
             )
             if [ -n "$rust_error_codes" ]; then
               echo "::error::Rust diagnostic codes: $rust_error_codes"
+            fi
+            if [ "$TARGET_LIBRARY" = onnxruntime ]; then
+              grep -n -A5 -B2 -E 'error(\[E[0-9]+\])?:' "$RUNNER_TEMP/voicevox_core_wasm_link.log" |
+                head -n 120 || true
             fi
             grep -E '^[[:space:]]*--> ' "$RUNNER_TEMP/voicevox_core_wasm_link.log" |
               sed -E 's/^[[:space:]]*--> ([^:]+:[0-9]+:[0-9]+).*/Compiler location: \1/' |
