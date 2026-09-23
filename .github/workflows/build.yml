@@ -40,7 +40,7 @@ on:
         required: false
         default: false
       wasm_core_link_test:
-        description: "voicevox_coreとのWASMリンク検証のみを実行する"
+        description: "voicevox_coreとのWASMリンクとONNXロード検証のみを実行する"
         type: boolean
         required: false
         default: false
@@ -1153,6 +1153,40 @@ jobs:
               sed -E 's/^[[:space:]]*--> ([^:]+:[0-9]+:[0-9]+).*/Compiler location: \1/' |
               sort -u |
               head -n 10 || true
+            exit 1
+          fi
+
+      - name: Load sample ONNX through the Core runtime
+        working-directory: voicevox_core
+        run: |
+          sample_model="$GITHUB_WORKSPACE/onnxruntime/onnxruntime/test/testdata/mul_1.onnx"
+          if [ ! -s "$sample_model" ]; then
+            echo "::error::The sample ONNX fixture was not found."
+            exit 1
+          fi
+
+          cd "$GITHUB_WORKSPACE/onnxruntime/cmake/external/emsdk"
+          source ./emsdk_env.sh
+          cd "$GITHUB_WORKSPACE/voicevox_core"
+
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sNODERAWFS=1 -L native=$ORT_LIBRARY_DIR"
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER=node
+          export VOICEVOX_SAMPLE_ONNX="$sample_model"
+          if cargo +1.96.0 test \
+            --quiet \
+            --package voicevox_core \
+            --lib \
+            --features link-onnxruntime,wasm-open-jtalk-link-smoke \
+            --target wasm32-unknown-emscripten \
+            -- loads_onnx_model_and_reads_io_metadata \
+            > "$RUNNER_TEMP/voicevox_core_wasm_model_load.log" 2>&1; then
+            echo "The sample ONNX model loaded and its I/O metadata was read successfully."
+          else
+            echo "::error::Core could not create a session from the sample ONNX model."
+            grep -n -A8 -B2 -E 'error(\[E[0-9]+\])?:|FAILED|panicked|Error:' \
+              "$RUNNER_TEMP/voicevox_core_wasm_model_load.log" |
+              head -n 120 || true
             exit 1
           fi
 
