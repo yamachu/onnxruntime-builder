@@ -1301,7 +1301,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/voicevox_core"
 
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
-          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -C link-arg=-sSTACK_SIZE=8388608 -C link-arg=--preload-file -C link-arg=$RUNNER_TEMP/sample.onnx@/sample.onnx -L native=$ORT_LIBRARY_DIR"
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -C link-arg=-sSTACK_SIZE=8388608 -C link-arg=--embed-file -C link-arg=$RUNNER_TEMP/sample.onnx@/sample.onnx -L native=$ORT_LIBRARY_DIR"
           cargo +1.96.0 build \
             --package voicevox_core \
             --bin wasm_onnx_smoke \
@@ -1315,7 +1315,6 @@ jobs:
           module_dir="target/wasm32-unknown-emscripten/c-api"
           cp "$module_dir/wasm_onnx_smoke.js" "$output_dir/"
           cp "$module_dir/wasm_onnx_smoke.wasm" "$output_dir/"
-          cp "$module_dir/wasm_onnx_smoke.data" "$output_dir/"
           echo "WASM_BROWSER_SMOKE_DIR=$output_dir" >> "$GITHUB_ENV"
 
       - name: Install headless Chromium
