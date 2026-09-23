@@ -1109,7 +1109,7 @@ jobs:
           if cargo +1.96.0 build \
             --quiet \
             --package voicevox_core_c_api \
-            --features link-onnxruntime,voicevox_core/wasm-link-smoke \
+            --features link-onnxruntime \
             --target wasm32-unknown-emscripten \
             --profile c-api \
             > "$RUNNER_TEMP/voicevox_core_wasm_link.log" 2>&1; then
