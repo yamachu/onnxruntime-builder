@@ -1305,7 +1305,7 @@ jobs:
           source ./emsdk_env.sh
           cd "$GITHUB_WORKSPACE/voicevox_core"
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
-          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -C link-arg=-sSTACK_SIZE=8388608 -C link-arg=-sEXPORTED_RUNTIME_METHODS=FS -C link-arg=-sEXPORTED_FUNCTIONS=_main,_voicevox_browser_synthesize,_voicevox_browser_wav_pointer,_voicevox_browser_wav_length -L native=$ORT_LIBRARY_DIR"
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -C link-arg=-sSTACK_SIZE=8388608 -C link-arg=-sEXPORTED_RUNTIME_METHODS=FS,HEAPU8 -C link-arg=-sEXPORTED_FUNCTIONS=_main,_voicevox_browser_synthesize,_voicevox_browser_wav_pointer,_voicevox_browser_wav_length -L native=$ORT_LIBRARY_DIR"
           cargo +1.96.0 build \
             --package voicevox_core_wasm \
             --bin wasm_browser_api_smoke \
