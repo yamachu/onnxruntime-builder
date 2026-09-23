@@ -1201,7 +1201,7 @@ jobs:
           if [ "$WASM_SIMD" != true ]; then
             simd_target_feature=-simd128
           fi
-          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=$simd_target_feature -C link-arg=-sNODERAWFS=1 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -L native=$ORT_LIBRARY_DIR"
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=$simd_target_feature -C link-arg=-sNODERAWFS=1 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -C link-arg=-sSTACK_SIZE=8388608 -L native=$ORT_LIBRARY_DIR"
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER=node
           if cargo +1.96.0 run \
             --quiet \
