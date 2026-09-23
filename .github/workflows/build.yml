@@ -24,6 +24,11 @@ on:
       release:
         description: "リリースするかどうか"
         type: boolean
+      build_wasm_static_lib:
+        description: "WASM static libraryを追加でビルドする"
+        type: boolean
+        required: false
+        default: false
       code_signing:
         description: "コード署名する"
         type: boolean
@@ -71,7 +76,7 @@ jobs:
       release: ${{ steps.create-draft-release.outputs.release || 'null' }}
     steps:
       - name: Create a tagless draft release
-        if: env.RELEASE == 'true'
+        if: env.RELEASE == 'true' && inputs.wasm_static_only != true
         id: create-draft-release
         run: |
           name=${{ needs.config.outputs.tag }}
@@ -839,7 +844,7 @@ jobs:
 
   build-wasm-static-lib:
     needs: create-draft-release
-    if: inputs.wasm_static_only == true
+    if: inputs.wasm_static_only == true || inputs.build_wasm_static_lib == true
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -849,6 +854,12 @@ jobs:
     outputs:
       release-name: ${{ steps.build.outputs.release-name }}
     steps:
+      - name: Validate release mode
+        if: env.RELEASE == 'true' && inputs.wasm_static_only == true
+        run: |
+          echo "::error::Use build_wasm_static_lib with the full build to create a release."
+          exit 1
+
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
@@ -1010,7 +1021,7 @@ jobs:
             ${{ env.RELEASE_NAME }}.tgz
 
       - name: Upload to Release
-        if: env.RELEASE == 'true'
+        if: env.RELEASE == 'true' && inputs.wasm_static_only != true
         uses: ./builder/.github/actions/upload-gh-release-assets
         with:
           upload-url: ${{ fromJson(needs.create-draft-release.outputs.release).upload_url }}
@@ -1152,6 +1163,13 @@ jobs:
 
   build-spec-table:
     needs: [config, create-draft-release, build-onnxruntime, build-wasm-static-lib, build-xcframework, get-terms]
+    if: >-
+      !cancelled()
+      && needs.config.result == 'success'
+      && needs.create-draft-release.result == 'success'
+      && needs.build-onnxruntime.result == 'success'
+      && needs.build-xcframework.result == 'success'
+      && needs.get-terms.result == 'success'
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -1203,12 +1221,6 @@ jobs:
             </tbody>
           </table>
 
-          ## WASM static library
-
-          SIMD enabled; threads disabled. The archive includes the ONNX Runtime public headers and build metadata.
-
-          [${{ needs.build-wasm-static-lib.outputs.release-name }}.tgz](https://github.com/$GITHUB_REPOSITORY/releases/download/${{ needs.config.outputs.tag }}/${{ needs.build-wasm-static-lib.outputs.release-name }}.tgz)
-
           ## XCFramework
 
           <table data-voicevox-onnxruntime-specs-format-version="1" data-voicevox-onnxruntime-specs-type="xcframeworks">
@@ -1236,6 +1248,14 @@ jobs:
             release_notes+='<pre data-voicevox-onnxruntime-terms><code>'
             release_notes+=$(< ./VOICEVOX_ORT_TERMS.md)$'\n'
             release_notes+=$'</code></pre>\n'
+          fi
+          if [ "${{ inputs.build_wasm_static_lib }}" = true ]; then
+            wasm_release_name=${{ needs.build-wasm-static-lib.outputs.release-name }}
+            release_notes+=$'\n\n## WASM static library\n\n'
+            release_notes+='SIMD enabled; threads disabled. The archive includes the ONNX Runtime public headers and build metadata.'
+            release_notes+=$'\n\n'
+            release_notes+="[$wasm_release_name.tgz](https://github.com/$GITHUB_REPOSITORY/releases/download/${{ needs.config.outputs.tag }}/$wasm_release_name.tgz)"
+            release_notes+=$'\n'
           fi
           tee release-notes.md >&2 <<< "$release_notes"
 
