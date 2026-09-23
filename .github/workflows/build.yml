@@ -1142,6 +1142,10 @@ jobs:
             if [ -n "$rust_error_codes" ]; then
               echo "::error::Rust diagnostic codes: $rust_error_codes"
             fi
+            grep -E '^[[:space:]]*--> ' "$RUNNER_TEMP/voicevox_core_wasm_link.log" |
+              sed -E 's/^[[:space:]]*--> ([^:]+:[0-9]+:[0-9]+).*/Compiler location: \1/' |
+              sort -u |
+              head -n 10 || true
             exit 1
           fi
 
