@@ -39,6 +39,21 @@ on:
         type: boolean
         required: false
         default: false
+      wasm_core_link_test:
+        description: "voicevox_coreとのWASMリンク検証のみを実行する"
+        type: boolean
+        required: false
+        default: false
+      wasm_artifact_run_id:
+        description: "利用するWASM artifactのActions run ID"
+        type: string
+        required: false
+        default: "35830958810"
+      voicevox_core_ref:
+        description: "リンク検証に使用するvoicevox_coreのref"
+        type: string
+        required: false
+        default: "poc/wasm-ort-static-link"
 
 env:
   TARGET_LIBRARY:
@@ -98,7 +113,7 @@ jobs:
 
   build-onnxruntime:
     needs: create-draft-release
-    if: inputs.wasm_static_only != true
+    if: inputs.wasm_static_only != true && inputs.wasm_core_link_test != true
     strategy:
       fail-fast: false
       matrix:
@@ -1026,6 +1041,88 @@ jobs:
         with:
           upload-url: ${{ fromJson(needs.create-draft-release.outputs.release).upload_url }}
           files: ${{ env.RELEASE_NAME }}.tgz
+
+  test-wasm-core-static-link:
+    if: inputs.wasm_core_link_test == true
+    runs-on: ubuntu-22.04
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Download ONNX Runtime WebAssembly artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: onnxruntime-wasm-static
+          path: wasm-artifact
+          run-id: ${{ inputs.wasm_artifact_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout voicevox_core
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: yamachu/voicevox_core
+          ref: ${{ inputs.voicevox_core_ref }}
+          path: voicevox_core
+
+      - name: Checkout ONNX Runtime Emscripten SDK
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: microsoft/onnxruntime
+          ref: v1.23.2
+          submodules: recursive
+          path: onnxruntime
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - name: Extract ONNX Runtime archive
+        run: |
+          artifact=$(find wasm-artifact -maxdepth 1 -type f -name '*.tgz' -print -quit)
+          if [ -z "$artifact" ]; then
+            echo "WASM build artifact archive was not found." >&2
+            exit 1
+          fi
+          mkdir -p ort-dist
+          tar -xzf "$artifact" -C ort-dist
+          library_dir=$(find ort-dist -type f -name libonnxruntime_webassembly.a -printf '%h' -quit)
+          if [ -z "$library_dir" ]; then
+            echo "The expected ONNX Runtime archive was not found." >&2
+            exit 1
+          fi
+          echo "ORT_LIBRARY_DIR=$GITHUB_WORKSPACE/$library_dir" >> "$GITHUB_ENV"
+
+      - name: Build voicevox_core C API for Emscripten
+        working-directory: voicevox_core
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --target wasm32-unknown-emscripten
+
+          cd "$GITHUB_WORKSPACE/onnxruntime/cmake/external/emsdk"
+          ./emsdk install latest
+          ./emsdk activate latest
+          source ./emsdk_env.sh
+          cd "$GITHUB_WORKSPACE/voicevox_core"
+
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
+          export RUSTFLAGS="-C target-feature=+simd128 -L native=$ORT_LIBRARY_DIR"
+          if cargo +1.96.0 build \
+            --quiet \
+            --package voicevox_core_c_api \
+            --features link-onnxruntime \
+            --target wasm32-unknown-emscripten \
+            --profile c-api \
+            > "$RUNNER_TEMP/voicevox_core_wasm_link.log" 2>&1; then
+            wasm_file=$(find target/wasm32-unknown-emscripten/c-api -maxdepth 1 -type f -name '*.wasm' -print -quit)
+            if [ -z "$wasm_file" ]; then
+              echo "The final WebAssembly module was not produced." >&2
+              exit 1
+            fi
+            ls -lh "$wasm_file"
+          else
+            echo "::error::voicevox_core C API did not link with the ONNX Runtime WebAssembly archive; compiler details are suppressed."
+            exit 1
+          fi
 
   build-xcframework:
     needs: [create-draft-release, build-onnxruntime]
