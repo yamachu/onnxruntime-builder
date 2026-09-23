@@ -1154,7 +1154,8 @@ jobs:
               -path '*/src/generated/emscripten/wasm32/bindings.rs' -print -quit)
             if [ -n "$generated_bindings" ]; then
               declaration_count=$(grep -Ec '^[[:space:]]*pub (fn|struct|enum|type|const|static)' "$generated_bindings" || true)
-              echo "::error::Generated Emscripten binding declarations: $declaration_count."
+              function_count=$(grep -Ec '^[[:space:]]*pub fn' "$generated_bindings" || true)
+              echo "::error::Generated Emscripten bindings: $declaration_count declarations, $function_count functions."
             else
               echo "::error::Generated Emscripten binding file was not found."
             fi
