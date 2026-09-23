@@ -1106,7 +1106,7 @@ jobs:
 
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -L native=$ORT_LIBRARY_DIR"
-          export BINDGEN_EXTRA_CLANG_ARGS="--target=wasm32-unknown-emscripten --sysroot=$EMSDK/upstream/emscripten/cache/sysroot"
+          export BINDGEN_EXTRA_CLANG_ARGS="--target=wasm32-unknown-emscripten --sysroot=$EMSDK/upstream/emscripten/cache/sysroot -USWIG"
           if cargo +1.96.0 build \
             --quiet \
             --package voicevox_core_c_api \
