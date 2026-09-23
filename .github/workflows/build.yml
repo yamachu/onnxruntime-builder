@@ -1106,11 +1106,10 @@ jobs:
 
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -L native=$ORT_LIBRARY_DIR"
-          export BINDGEN_EXTRA_CLANG_ARGS="--target=wasm32-unknown-emscripten --sysroot=$EMSDK/upstream/emscripten/cache/sysroot -USWIG"
           if cargo +1.96.0 build \
             --quiet \
             --package voicevox_core_c_api \
-            --features link-onnxruntime,voicevox_core/generate-open-jtalk-bindings \
+            --features link-onnxruntime,voicevox_core/wasm-link-smoke \
             --target wasm32-unknown-emscripten \
             --profile c-api \
             > "$RUNNER_TEMP/voicevox_core_wasm_link.log" 2>&1; then
@@ -1150,26 +1149,8 @@ jobs:
               sed -E 's/^[[:space:]]*--> ([^:]+:[0-9]+:[0-9]+).*/Compiler location: \1/' |
               sort -u |
               head -n 10 || true
-            generated_bindings=$(find "$HOME/.cargo/git/checkouts" -type f \
-              -path '*/src/generated/emscripten/wasm32/bindings.rs' -print -quit)
-            if [ -n "$generated_bindings" ]; then
-              declaration_count=$(grep -Ec '^[[:space:]]*pub (fn|struct|enum|type|const|static)' "$generated_bindings" || true)
-              function_count=$(grep -Ec '^[[:space:]]*pub fn' "$generated_bindings" || true)
-              echo "::error::Generated Emscripten bindings: $declaration_count declarations, $function_count functions."
-            else
-              echo "::error::Generated Emscripten binding file was not found."
-            fi
             exit 1
           fi
-
-      - name: Upload generated Emscripten bindings for diagnosis
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: emscripten-open-jtalk-bindings
-          path: ~/.cargo/git/checkouts/**/src/generated/emscripten/wasm32/bindings.rs
-          if-no-files-found: warn
-          retention-days: 1
 
   build-xcframework:
     needs: [create-draft-release, build-onnxruntime]
