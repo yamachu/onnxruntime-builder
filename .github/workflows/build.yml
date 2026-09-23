@@ -1253,7 +1253,7 @@ jobs:
           ref: ${{ inputs.voicevox_core_browser_ref }}
           path: voicevox_core
 
-      - name: Checkout ONNX Runtime Emscripten SDK and test model
+      - name: Checkout ONNX Runtime Emscripten SDK
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           repository: microsoft/onnxruntime
@@ -1266,7 +1266,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Extract ONNX Runtime archive and prepare the public test model
+      - name: Extract ONNX Runtime archive
         run: |
           artifact=$(find wasm-artifact -maxdepth 1 -type f -name '*.tgz' -print -quit)
           if [ -z "$artifact" ]; then
@@ -1282,13 +1282,6 @@ jobs:
           fi
           echo "ORT_LIBRARY_DIR=$GITHUB_WORKSPACE/$library_dir" >> "$GITHUB_ENV"
 
-          test_model="$GITHUB_WORKSPACE/onnxruntime/onnxruntime/test/testdata/mul_1.onnx"
-          if [ ! -f "$test_model" ]; then
-            echo "The public ONNX smoke-test model was not found: $test_model" >&2
-            exit 1
-          fi
-          cp "$test_model" "$RUNNER_TEMP/sample.onnx"
-
       - name: Build browser-compatible Emscripten module
         working-directory: voicevox_core
         run: |
@@ -1299,13 +1292,11 @@ jobs:
           ./emsdk activate latest
           source ./emsdk_env.sh
           cd "$GITHUB_WORKSPACE/voicevox_core"
-
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
-          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -C link-arg=-sSTACK_SIZE=8388608 -C link-arg=--embed-file -C link-arg=$RUNNER_TEMP/sample.onnx@/sample.onnx -L native=$ORT_LIBRARY_DIR"
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -C link-arg=-sSTACK_SIZE=8388608 -C link-arg=-sEXPORTED_FUNCTIONS=_main,_voicevox_browser_initialize_runtime -L native=$ORT_LIBRARY_DIR"
           cargo +1.96.0 build \
-            --package voicevox_core \
-            --bin wasm_onnx_smoke \
-            --features link-onnxruntime,wasm-open-jtalk-link-smoke \
+            --package voicevox_core_wasm \
+            --bin wasm_c_api_binding_smoke \
             --target wasm32-unknown-emscripten \
             --profile c-api
 
@@ -1313,8 +1304,8 @@ jobs:
           mkdir -p "$output_dir"
           cp crates/voicevox_core/wasm-browser-smoke/* "$output_dir/"
           module_dir="target/wasm32-unknown-emscripten/c-api"
-          cp "$module_dir/wasm_onnx_smoke.js" "$output_dir/"
-          cp "$module_dir/wasm_onnx_smoke.wasm" "$output_dir/"
+          cp "$module_dir/wasm_c_api_binding_smoke.js" "$output_dir/"
+          cp "$module_dir/wasm_c_api_binding_smoke.wasm" "$output_dir/"
           echo "WASM_BROWSER_SMOKE_DIR=$output_dir" >> "$GITHUB_ENV"
 
       - name: Install headless Chromium
