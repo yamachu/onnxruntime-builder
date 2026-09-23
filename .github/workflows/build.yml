@@ -1162,6 +1162,15 @@ jobs:
             exit 1
           fi
 
+      - name: Upload generated Emscripten bindings for diagnosis
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: emscripten-open-jtalk-bindings
+          path: ~/.cargo/git/checkouts/**/src/generated/emscripten/wasm32/bindings.rs
+          if-no-files-found: warn
+          retention-days: 1
+
   build-xcframework:
     needs: [create-draft-release, build-onnxruntime]
     runs-on: macos-14
