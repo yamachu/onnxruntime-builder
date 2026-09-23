@@ -1172,7 +1172,6 @@ jobs:
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sNODERAWFS=1 -L native=$ORT_LIBRARY_DIR"
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER=node
-          export VOICEVOX_SAMPLE_ONNX="$sample_model"
           if cargo +1.96.0 run \
             --quiet \
             --package voicevox_core \
@@ -1180,6 +1179,7 @@ jobs:
             --features link-onnxruntime,wasm-open-jtalk-link-smoke,wasm-onnx-load-smoke \
             --target wasm32-unknown-emscripten \
             -- \
+            "$sample_model" \
             > "$RUNNER_TEMP/voicevox_core_wasm_model_load.log" 2>&1; then
             echo "The sample ONNX model loaded and its I/O metadata was read successfully."
           else
