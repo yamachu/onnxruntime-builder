@@ -1121,6 +1121,18 @@ jobs:
             ls -lh "$wasm_file"
           else
             echo "::error::voicevox_core C API did not link with the ONNX Runtime WebAssembly archive; compiler details are suppressed."
+            for diagnostic in \
+              "Rust diagnostics|error\\[E[0-9]+\\]" \
+              "static library resolution|could not find native static library|library not found|cannot find -l" \
+              "unresolved linker symbols|undefined symbol|undefined reference" \
+              "Emscripten linker failure|emcc: error|wasm-ld: error|linking with .* failed" \
+              "Cargo build script failure|failed to run custom build command"; do
+              label=${diagnostic%%|*}
+              pattern=${diagnostic#*|}
+              if grep -Eiq "$pattern" "$RUNNER_TEMP/voicevox_core_wasm_link.log"; then
+                echo "::error::Diagnostic category: $label."
+              fi
+            done
             exit 1
           fi
 
