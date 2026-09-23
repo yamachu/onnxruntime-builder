@@ -1133,6 +1133,15 @@ jobs:
                 echo "::error::Diagnostic category: $label."
               fi
             done
+            rust_error_codes=$(
+              grep -Eo 'error\[E[0-9]+\]' "$RUNNER_TEMP/voicevox_core_wasm_link.log" |
+                sort -u |
+                tr '\n' ' ' ||
+                true
+            )
+            if [ -n "$rust_error_codes" ]; then
+              echo "::error::Rust diagnostic codes: $rust_error_codes"
+            fi
             exit 1
           fi
 
