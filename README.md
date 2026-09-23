@@ -4,11 +4,12 @@ VOICEVOX COREで利用するonnxruntimeのビルドを行うリポジトリ
 ## ビルド
 
 [`build`ワークフロー]をworkflow_dispatchで起動。
+ONNX RuntimeのWASM static libraryもビルドされ、`onnxruntime-wasm-static`（VOICEVOX版では`voicevox_onnxruntime-wasm-static`）というartifactとして取得できる。初期構成はSIMD有効・threads無効。
 
 ## リリース
 
 1. [`build`ワークフロー]を`release=true`で起動してdraft releaseを作成。
-2. releaseのdraftを解除する。
+2. releaseのdraftを解除する。WASM static libraryは`<target>-wasm-static-<version>.tgz`として同じreleaseに含まれる。
 
 ## 再リリース
 

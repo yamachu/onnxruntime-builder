@@ -5,7 +5,7 @@
 # 2. build-onnxruntime等: 各成果物をdraft releaseにアップロード
 # 3. b.と2.の情報からreleaseのbodyを作成
 
-name: Build C++ Shared Library
+name: Build ONNX Runtime Libraries
 
 on:
   push:
@@ -26,6 +26,11 @@ on:
         type: boolean
       code_signing:
         description: "コード署名する"
+        type: boolean
+        required: false
+        default: false
+      wasm_static_only:
+        description: "WASM static libraryのみをビルドする"
         type: boolean
         required: false
         default: false
@@ -88,6 +93,7 @@ jobs:
 
   build-onnxruntime:
     needs: create-draft-release
+    if: inputs.wasm_static_only != true
     strategy:
       fail-fast: false
       matrix:
@@ -831,6 +837,185 @@ jobs:
           upload-url: ${{ fromJson(needs.create-draft-release.outputs.release).upload_url }}
           files: ${{ env.RELEASE_NAME }}.tgz
 
+  build-wasm-static-lib:
+    needs: create-draft-release
+    if: inputs.wasm_static_only == true
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    environment: ${{ inputs.target == 'voicevox_onnxruntime' && 'production' || '' }}
+    env:
+      RELEASE_NAME: ${{ inputs.target || 'onnxruntime' }}-wasm-static-${{ inputs.version || '1.23.2' }}
+    outputs:
+      release-name: ${{ steps.build.outputs.release-name }}
+    steps:
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Version check (semver)
+        run: |
+          if [[ $ONNXRUNTIME_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$ ]]; then
+            echo "Version: $ONNXRUNTIME_VERSION"
+          else
+            echo "$ONNXRUNTIME_VERSION is not a valid semver." >&2
+            exit 1
+          fi
+
+      - name: Checkout ONNX Runtime
+        if: env.TARGET_LIBRARY == 'onnxruntime'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: microsoft/onnxruntime
+          submodules: recursive
+          ref: v${{ env.ONNXRUNTIME_VERSION }}
+
+      - name: Checkout ONNX Runtime
+        if: env.TARGET_LIBRARY == 'voicevox_onnxruntime'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: microsoft/onnxruntime
+          submodules: recursive
+          ref: v${{ env.ONNXRUNTIME_VERSION }}
+          token: ${{ secrets.PRODUCTION_GITHUB_TOKEN }}
+
+      - name: Switch to production
+        id: switch-to-production
+        if: env.TARGET_LIBRARY == 'voicevox_onnxruntime'
+        run: |
+          (
+            git remote add private "$PRODUCTION_REPOSITORY_URL"
+            git fetch private "refs/tags/v$ONNXRUNTIME_VERSION-voicevox"
+            git switch -d FETCH_HEAD
+          ) 1>/dev/null 2>/dev/null
+        env:
+          PRODUCTION_REPOSITORY_URL: ${{ secrets.PRODUCTION_REPOSITORY_URL }}
+
+      - name: Checkout builder
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          path: builder
+
+      - name: Apply patch
+        run: |
+          find ./builder -name '*.patch' -exec git apply --ignore-whitespace --reject --whitespace=fix --verbose {} +
+
+      - name: Run prepare.bash
+        id: prepare
+        if: env.TARGET_LIBRARY == 'voicevox_onnxruntime'
+        run: ./prepare.bash 1>wasm_prepare_stdout.txt 2>wasm_prepare_stderr.txt
+
+      - name: Build and package ONNX Runtime WebAssembly static library
+        id: build
+        run: |
+          build_and_package() {
+            cd cmake/external/emsdk || return 1
+            ./emsdk install latest
+            ./emsdk activate latest
+            source ./emsdk_env.sh
+            cd "$GITHUB_WORKSPACE" || return 1
+
+            python ./tools/ci_build/build.py \
+              --build_dir ./build/wasm_static_lib \
+              --config Release \
+              --update \
+              --build \
+              --parallel \
+              --build_wasm_static_lib \
+              --enable_wasm_simd \
+              --disable_wasm_exception_catching \
+              --disable_rtti \
+              --skip_tests
+
+            mapfile -d '' -t library_paths < <(
+              find ./build/wasm_static_lib -type f -name libonnxruntime_webassembly.a -print0
+            )
+            if [ "${#library_paths[@]}" -ne 1 ]; then
+              printf 'Expected exactly one libonnxruntime_webassembly.a, found %s\n' \
+                "${#library_paths[@]}" >&2
+              return 1
+            fi
+            if [ ! -d ./include/onnxruntime ]; then
+              echo 'ONNX Runtime public headers were not found in ./include/onnxruntime' >&2
+              return 1
+            fi
+
+            mkdir -p "$RELEASE_NAME/lib" "$RELEASE_NAME/include"
+            cp "${library_paths[0]}" "$RELEASE_NAME/lib/"
+            cp -R ./include/onnxruntime "$RELEASE_NAME/include/"
+            cp LICENSE ThirdPartyNotices.txt "$RELEASE_NAME/"
+            if [ "$TARGET_LIBRARY" = voicevox_onnxruntime ]; then
+              rm "$RELEASE_NAME/LICENSE" "$RELEASE_NAME/ThirdPartyNotices.txt"
+              cp VOICEVOX_ORT_TERMS.md "$RELEASE_NAME/TERMS.txt"
+              cp ./build/third-party-notices.html "$RELEASE_NAME/"
+            fi
+
+            {
+              printf 'ONNXRUNTIME_VERSION=%s\n' "$ONNXRUNTIME_VERSION"
+              printf 'TARGET_LIBRARY=%s\n' "$TARGET_LIBRARY"
+              printf 'SOURCE_COMMIT=%s\n' "$(git rev-parse HEAD)"
+              printf 'BUILD_OPTIONS=--build_wasm_static_lib --enable_wasm_simd --disable_wasm_exception_catching --disable_rtti --skip_tests\n'
+              printf '\nEmscripten compiler:\n'
+              emcc --version
+            } > "$RELEASE_NAME/BUILD_INFO.txt"
+
+            tar -czf "$RELEASE_NAME.tgz" "$RELEASE_NAME"
+            echo "release-name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
+          }
+
+          if [ "$TARGET_LIBRARY" = voicevox_onnxruntime ]; then
+            build_and_package \
+              > wasm_build_stdout.txt \
+              2> wasm_build_stderr.txt
+          else
+            build_and_package
+          fi
+
+      - name: Encrypt log
+        if: |
+          failure()
+          && (
+            steps.switch-to-production.outcome == 'failure'
+            || steps.prepare.outcome == 'failure'
+            || steps.build.outcome == 'failure'
+          )
+          && env.TARGET_LIBRARY == 'voicevox_onnxruntime'
+        run: |
+          for file in wasm_{prepare,build}_{stdout,stderr}.txt; do
+            if [ -f "$file" ]; then
+              gpg -ef ./builder/log-encryption-pub.asc "$file"
+            fi
+          done
+
+      - name: Upload the encrypted log
+        if: |
+          failure()
+          && (
+            steps.switch-to-production.outcome == 'failure'
+            || steps.prepare.outcome == 'failure'
+            || steps.build.outcome == 'failure'
+          )
+          && env.TARGET_LIBRARY == 'voicevox_onnxruntime'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: log_${{ env.TARGET_LIBRARY }}-wasm-static
+          path: wasm_*_*.txt.gpg
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ env.TARGET_LIBRARY }}-wasm-static
+          path: |
+            ${{ env.RELEASE_NAME }}
+            ${{ env.RELEASE_NAME }}.tgz
+
+      - name: Upload to Release
+        if: env.RELEASE == 'true'
+        uses: ./builder/.github/actions/upload-gh-release-assets
+        with:
+          upload-url: ${{ fromJson(needs.create-draft-release.outputs.release).upload_url }}
+          files: ${{ env.RELEASE_NAME }}.tgz
+
   build-xcframework:
     needs: [create-draft-release, build-onnxruntime]
     runs-on: macos-14
@@ -966,7 +1151,7 @@ jobs:
           path: VOICEVOX_ORT_TERMS.md
 
   build-spec-table:
-    needs: [config, create-draft-release, build-onnxruntime, build-xcframework, get-terms]
+    needs: [config, create-draft-release, build-onnxruntime, build-wasm-static-lib, build-xcframework, get-terms]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -1017,6 +1202,12 @@ jobs:
             cat <<EOF
             </tbody>
           </table>
+
+          ## WASM static library
+
+          SIMD enabled; threads disabled. The archive includes the ONNX Runtime public headers and build metadata.
+
+          [${{ needs.build-wasm-static-lib.outputs.release-name }}.tgz](https://github.com/$GITHUB_REPOSITORY/releases/download/${{ needs.config.outputs.tag }}/${{ needs.build-wasm-static-lib.outputs.release-name }}.tgz)
 
           ## XCFramework
 
