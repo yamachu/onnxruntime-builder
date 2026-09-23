@@ -1124,7 +1124,7 @@ jobs:
           if [ "$WASM_SIMD" != true ]; then
             simd_target_feature=-simd128
           fi
-          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=$simd_target_feature -L native=$ORT_LIBRARY_DIR"
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=$simd_target_feature -C link-arg=-sSTACK_SIZE=8388608 -L native=$ORT_LIBRARY_DIR"
           if cargo +1.96.0 build \
             --quiet \
             --package voicevox_core_c_api \
