@@ -1178,7 +1178,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/voicevox_core"
 
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
-          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sNODERAWFS=1 -L native=$ORT_LIBRARY_DIR"
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sNODERAWFS=1 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -L native=$ORT_LIBRARY_DIR"
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER=node
           if cargo +1.96.0 run \
             --quiet \
