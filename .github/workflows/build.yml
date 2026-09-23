@@ -1156,14 +1156,22 @@ jobs:
             exit 1
           fi
 
-      - name: Load sample ONNX through the Core runtime
+      - name: Synthesize sample text through the Core runtime
         working-directory: voicevox_core
         run: |
-          sample_model="$GITHUB_WORKSPACE/onnxruntime/onnxruntime/test/testdata/mul_1.onnx"
-          if [ ! -s "$sample_model" ]; then
-            echo "::error::The sample ONNX fixture was not found."
-            exit 1
-          fi
+          sample_model="$GITHUB_WORKSPACE/voicevox_core/model/sample.vvm"
+          packaged_model="$RUNNER_TEMP/sample.vvm"
+          python3 - "$sample_model" "$packaged_model" <<'PY'
+          import pathlib
+          import sys
+          import zipfile
+
+          source_dir = pathlib.Path(sys.argv[1])
+          with zipfile.ZipFile(sys.argv[2], "w", compression=zipfile.ZIP_STORED) as archive:
+              for path in sorted(source_dir.iterdir()):
+                  if path.is_file():
+                      archive.write(path, path.name)
+          PY
 
           cd "$GITHUB_WORKSPACE/onnxruntime/cmake/external/emsdk"
           source ./emsdk_env.sh
@@ -1175,17 +1183,17 @@ jobs:
           if cargo +1.96.0 run \
             --quiet \
             --package voicevox_core \
-            --bin wasm_onnx_load \
-            --features link-onnxruntime,wasm-open-jtalk-link-smoke,wasm-onnx-load-smoke \
+            --bin wasm_synthesis_smoke \
+            --features link-onnxruntime,wasm-synthesis-smoke \
             --target wasm32-unknown-emscripten \
             -- \
-            "$sample_model" \
-            > "$RUNNER_TEMP/voicevox_core_wasm_model_load.log" 2>&1; then
-            echo "The sample ONNX model loaded and its I/O metadata was read successfully."
+            "$packaged_model" \
+            > "$RUNNER_TEMP/voicevox_core_wasm_synthesis.log" 2>&1; then
+            cat "$RUNNER_TEMP/voicevox_core_wasm_synthesis.log"
           else
-            echo "::error::Core could not create a session from the sample ONNX model."
+            echo "::error::Core could not synthesize audio with the sample voice model."
             grep -n -A8 -B2 -E 'error(\[E[0-9]+\])?:|FAILED|panicked|Error:' \
-              "$RUNNER_TEMP/voicevox_core_wasm_model_load.log" |
+              "$RUNNER_TEMP/voicevox_core_wasm_synthesis.log" |
               head -n 120 || true
             exit 1
           fi
