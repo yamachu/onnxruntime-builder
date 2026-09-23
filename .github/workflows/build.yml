@@ -1293,12 +1293,14 @@ jobs:
           source ./emsdk_env.sh
           cd "$GITHUB_WORKSPACE/voicevox_core"
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
-          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -C link-arg=-sSTACK_SIZE=8388608 -C link-arg=-sEXPORTED_FUNCTIONS=_main,_voicevox_browser_initialize_runtime -L native=$ORT_LIBRARY_DIR"
-          cargo +1.96.0 build \
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -C link-arg=-sSTACK_SIZE=8388608 -L native=$ORT_LIBRARY_DIR"
+          cargo +1.96.0 rustc \
             --package voicevox_core_wasm \
             --bin wasm_c_api_binding_smoke \
             --target wasm32-unknown-emscripten \
-            --profile c-api
+            --profile c-api \
+            -- \
+            -C link-arg=-sEXPORTED_FUNCTIONS=_main,_voicevox_browser_initialize_runtime
 
           output_dir="$RUNNER_TEMP/wasm-browser-smoke"
           mkdir -p "$output_dir"
