@@ -39,8 +39,13 @@ on:
         type: boolean
         required: false
         default: false
+      wasm_simd:
+        description: "WASM SIMDを有効にする"
+        type: boolean
+        required: false
+        default: true
       wasm_core_link_test:
-        description: "voicevox_coreとのWASMリンクとONNXロード検証のみを実行する"
+        description: "voicevox_coreとのWASMリンクとONNX推論検証のみを実行する"
         type: boolean
         required: false
         default: false
@@ -866,6 +871,7 @@ jobs:
     environment: ${{ inputs.target == 'voicevox_onnxruntime' && 'production' || '' }}
     env:
       RELEASE_NAME: ${{ inputs.target || 'onnxruntime' }}-wasm-static-${{ inputs.version || '1.23.2' }}
+      WASM_SIMD: ${{ inputs.wasm_simd != false }}
     outputs:
       release-name: ${{ steps.build.outputs.release-name }}
     steps:
@@ -935,6 +941,13 @@ jobs:
         id: build
         run: |
           build_and_package() {
+            local wasm_simd_args=()
+            local wasm_simd_build_option=""
+            if [ "$WASM_SIMD" = true ]; then
+              wasm_simd_args+=(--enable_wasm_simd)
+              wasm_simd_build_option=" --enable_wasm_simd"
+            fi
+
             cd cmake/external/emsdk || return 1
             ./emsdk install latest
             ./emsdk activate latest
@@ -948,7 +961,7 @@ jobs:
               --build \
               --parallel \
               --build_wasm_static_lib \
-              --enable_wasm_simd \
+              "${wasm_simd_args[@]}" \
               --disable_wasm_exception_catching \
               --disable_rtti \
               --skip_tests
@@ -980,7 +993,7 @@ jobs:
               printf 'ONNXRUNTIME_VERSION=%s\n' "$ONNXRUNTIME_VERSION"
               printf 'TARGET_LIBRARY=%s\n' "$TARGET_LIBRARY"
               printf 'SOURCE_COMMIT=%s\n' "$(git rev-parse HEAD)"
-              printf 'BUILD_OPTIONS=--build_wasm_static_lib --enable_wasm_simd --disable_wasm_exception_catching --disable_rtti --skip_tests\n'
+              printf 'BUILD_OPTIONS=--build_wasm_static_lib%s --disable_wasm_exception_catching --disable_rtti --skip_tests\n' "$wasm_simd_build_option"
               printf '\nEmscripten compiler:\n'
               emcc --version
             } > "$RELEASE_NAME/BUILD_INFO.txt"
@@ -1045,6 +1058,8 @@ jobs:
   test-wasm-core-static-link:
     if: inputs.wasm_core_link_test == true
     runs-on: ubuntu-22.04
+    env:
+      WASM_SIMD: ${{ inputs.wasm_simd != false }}
     permissions:
       actions: read
       contents: read
@@ -1105,7 +1120,11 @@ jobs:
           cd "$GITHUB_WORKSPACE/voicevox_core"
 
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
-          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -L native=$ORT_LIBRARY_DIR"
+          simd_target_feature=+simd128
+          if [ "$WASM_SIMD" != true ]; then
+            simd_target_feature=-simd128
+          fi
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=$simd_target_feature -L native=$ORT_LIBRARY_DIR"
           if cargo +1.96.0 build \
             --quiet \
             --package voicevox_core_c_api \
@@ -1178,7 +1197,11 @@ jobs:
           cd "$GITHUB_WORKSPACE/voicevox_core"
 
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
-          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sNODERAWFS=1 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -L native=$ORT_LIBRARY_DIR"
+          simd_target_feature=+simd128
+          if [ "$WASM_SIMD" != true ]; then
+            simd_target_feature=-simd128
+          fi
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=$simd_target_feature -C link-arg=-sNODERAWFS=1 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -L native=$ORT_LIBRARY_DIR"
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUNNER=node
           if cargo +1.96.0 run \
             --quiet \
@@ -1423,7 +1446,11 @@ jobs:
           if [ "${{ inputs.build_wasm_static_lib }}" = true ]; then
             wasm_release_name=${{ needs.build-wasm-static-lib.outputs.release-name }}
             release_notes+=$'\n\n## WASM static library\n\n'
-            release_notes+='SIMD enabled; threads disabled. The archive includes the ONNX Runtime public headers and build metadata.'
+            if [ "${{ inputs.wasm_simd }}" = true ]; then
+              release_notes+='SIMD enabled; threads disabled. The archive includes the ONNX Runtime public headers and build metadata.'
+            else
+              release_notes+='SIMD disabled; threads disabled. The archive includes the ONNX Runtime public headers and build metadata.'
+            fi
             release_notes+=$'\n\n'
             release_notes+="[$wasm_release_name.tgz](https://github.com/$GITHUB_REPOSITORY/releases/download/${{ needs.config.outputs.tag }}/$wasm_release_name.tgz)"
             release_notes+=$'\n'
