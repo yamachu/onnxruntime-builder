@@ -1293,21 +1293,19 @@ jobs:
           source ./emsdk_env.sh
           cd "$GITHUB_WORKSPACE/voicevox_core"
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
-          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -C link-arg=-sSTACK_SIZE=8388608 -L native=$ORT_LIBRARY_DIR"
-          cargo +1.96.0 rustc \
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -C link-arg=-sALLOW_MEMORY_GROWTH=1 -C link-arg=-sSTACK_SIZE=8388608 -C link-arg=-sEXPORTED_FUNCTIONS=_main,_voicevox_browser_initialize_runtime -L native=$ORT_LIBRARY_DIR"
+          cargo +1.96.0 build \
             --package voicevox_core_wasm \
-            --bin wasm_c_api_binding_smoke \
+            --bin wasm_browser_api_smoke \
             --target wasm32-unknown-emscripten \
-            --profile c-api \
-            -- \
-            -C link-arg=-sEXPORTED_FUNCTIONS=_main,_voicevox_browser_initialize_runtime
+            --profile c-api
 
           output_dir="$RUNNER_TEMP/wasm-browser-smoke"
           mkdir -p "$output_dir"
           cp crates/voicevox_core/wasm-browser-smoke/* "$output_dir/"
           module_dir="target/wasm32-unknown-emscripten/c-api"
-          cp "$module_dir/wasm_c_api_binding_smoke.js" "$output_dir/"
-          cp "$module_dir/wasm_c_api_binding_smoke.wasm" "$output_dir/"
+          cp "$module_dir/wasm_browser_api_smoke.js" "$output_dir/"
+          cp "$module_dir/wasm_browser_api_smoke.wasm" "$output_dir/"
           echo "WASM_BROWSER_SMOKE_DIR=$output_dir" >> "$GITHUB_ENV"
 
       - name: Install headless Chromium
