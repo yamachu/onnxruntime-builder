@@ -1127,6 +1127,9 @@ jobs:
               "static library resolution|could not find native static library|library not found|cannot find -l" \
               "unresolved linker symbols|undefined symbol|undefined reference" \
               "Emscripten linker failure|emcc: error|wasm-ld: error|linking with .* failed" \
+              "C binding generation failure|Unable to generate bindings|libclang|bindgen" \
+              "CMake configuration or compilation failure|CMake Error|CMake.*failed|C compiler.*failed|C\\+\\+ compiler.*failed" \
+              "Emscripten toolchain failure|emcc.*not found|No such file or directory|could not execute process" \
               "Cargo build script failure|failed to run custom build command"; do
               label=${diagnostic%%|*}
               pattern=${diagnostic#*|}
