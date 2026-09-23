@@ -1105,7 +1105,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/voicevox_core"
 
           export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER=emcc
-          export RUSTFLAGS="-C target-feature=+simd128 -L native=$ORT_LIBRARY_DIR"
+          export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_RUSTFLAGS="-C target-feature=+simd128 -L native=$ORT_LIBRARY_DIR"
           if cargo +1.96.0 build \
             --quiet \
             --package voicevox_core_c_api \
